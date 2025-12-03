@@ -1,0 +1,1072 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>食譜成本計算與管理系統 - 單機版</title>
+    
+    <!-- PWA / App 相關 Meta Tags (新增) -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#171717">
+
+    <!-- 載入 Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 載入 Inter 字體 -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap" rel="stylesheet">
+    <!-- Lucide Icons for a professional look -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        /* 定義黑金色調 */
+        :root {
+            --color-dark-primary: #171717; /* 接近黑色的深色背景 */
+            --color-dark-secondary: #262626; /* 卡片背景/區塊背景 */
+            --color-gold-accent: #D4AF37; /* 金色強調色 */
+            --color-gold-hover: #E8C15E; 
+            --color-text-light: #F5F5F5; /* 淺色文字 */
+            --color-text-medium: #A3A3A3; /* 次要文字 */
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--color-dark-primary); 
+            color: var(--color-text-light);
+        }
+        
+        .app-card {
+            background-color: var(--color-dark-secondary);
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 4px 6px -2px rgba(0, 0, 0, 0.2);
+            border: 1px solid #3f3f46; /* Slate 700 邊框 */
+        }
+        
+        /* Tab 按鈕樣式 */
+        .tab-button {
+            color: var(--color-text-medium);
+            border-bottom: 3px solid transparent;
+        }
+        .tab-button.active {
+            border-bottom: 3px solid var(--color-gold-accent); 
+            color: var(--color-gold-accent);
+            font-weight: 600;
+        }
+
+        /* 輸入框/下拉選單的深色樣式 */
+        input:not([type="submit"]), select {
+            background-color: #3f3f46; /* Slate 700 */
+            border-color: #52525B; /* Slate 600 */
+            color: var(--color-text-light);
+        }
+        input:focus, select:focus, button:focus {
+            outline: none;
+            box-shadow: 0 0 0 2px var(--color-gold-accent); /* 金色 Focus Ring */
+            border-color: var(--color-gold-accent);
+        }
+
+        /* 主要按鈕 (金色) */
+        .btn-primary {
+            background-color: var(--color-gold-accent);
+            color: var(--color-dark-primary); /* 深色字體以確保對比 */
+            font-weight: 700;
+            transition: all 0.2s;
+        }
+        .btn-primary:hover {
+            background-color: var(--color-gold-hover);
+            box-shadow: 0 4px 10px rgba(212, 175, 55, 0.4);
+        }
+
+        /* 輔助按鈕 (深色/灰色) */
+        .btn-secondary {
+            background-color: #52525B; /* Slate 600 */
+            color: var(--color-text-light);
+        }
+        .btn-secondary:hover {
+            background-color: #64748B; /* Slate 500 */
+        }
+
+        /* 隱藏數字輸入箭頭 */
+        input[type=number]::-webkit-inner-spin-button, 
+        input[type=number]::-webkit-outer-spin-button { 
+            -webkit-appearance: none; 
+            margin: 0; 
+        }
+        input[type=number] {
+            -moz-appearance: textfield;
+        }
+
+        /* 數據顯示區塊 */
+        .data-display-box {
+            background-color: #3f3f46; /* Slate 700 */
+            border: 1px solid var(--color-gold-accent);
+            color: var(--color-text-light);
+        }
+
+    </style>
+</head>
+<body class="p-4 md:p-8">
+
+    <div id="app-container" class="max-w-7xl mx-auto rounded-2xl app-card p-6 md:p-10">
+        <header class="mb-8">
+            <h1 class="text-3xl md:text-4xl font-extrabold flex items-center text-white">
+                <i data-lucide="calculator" class="w-7 h-7 mr-3" style="color: var(--color-gold-accent);"></i>
+                食譜成本分析與管理 (單機模式)
+            </h1>
+        </header>
+
+        <!-- 導航分頁 -->
+        <div class="flex border-b mb-6 sticky top-0 z-10" style="border-color: #3f3f46; background-color: var(--color-dark-secondary);">
+            <button id="tab-materials" data-tab="materials" class="tab-button active flex-1 py-3 px-2 transition duration-150 ease-in-out text-base md:text-lg">
+                <i data-lucide="database" class="w-5 h-5 inline-block md:mr-2 align-text-bottom"></i>
+                <span class="hidden md:inline">原物料</span>資料庫
+            </button>
+            <button id="tab-recipes" data-tab="recipes" class="tab-button flex-1 py-3 px-2 transition duration-150 ease-in-out text-base md:text-lg">
+                <i data-lucide="book-open-check" class="w-5 h-5 inline-block md:mr-2 align-text-bottom"></i>
+                <span class="hidden md:inline">食譜</span>成本計算器
+            </button>
+        </div>
+
+        <!-- 原物料資料庫內容 -->
+        <div id="tab-content-materials" class="tab-content">
+            <h2 class="text-2xl font-semibold mb-4 border-b pb-2 text-white" style="border-color: #3f3f46;">原物料資料庫 (單位成本分析)</h2>
+            
+            <div id="material-list-container" class="scroll-container bg-transparent p-0 md:p-2 rounded-xl">
+                <!-- 原物料列表將在這裡渲染 -->
+                <div id="material-list" class="space-y-4">
+                    <p class="text-center py-6" style="color: var(--color-text-medium);">目前沒有原物料。請新增。</p>
+                </div>
+            </div>
+
+            <!-- 新增/編輯原物料表單 -->
+            <div class="mt-8 p-5 md:p-7 rounded-xl shadow-xl" style="background-color: #262626; border: 1px solid var(--color-gold-accent);">
+                <h3 class="text-xl font-bold mb-4 flex items-center" style="color: var(--color-gold-accent);">
+                     <i data-lucide="square-pen" class="w-5 h-5 mr-2"></i>
+                    新增/編輯原物料項目
+                </h3>
+                <form id="material-form" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
+                    <input type="hidden" id="material-id">
+
+                    <!-- 基本資訊 (2 欄位) -->
+                    <div class="lg:col-span-2">
+                        <label for="material-name" class="block text-sm font-medium" style="color: var(--color-text-medium);">材料名稱 (必填)</label>
+                        <input type="text" id="material-name" placeholder="麵粉、糖、奶油..." required class="mt-1 w-full p-2 rounded-lg text-sm">
+                    </div>
+                    <div class="lg:col-span-2">
+                        <label for="material-supplier" class="block text-sm font-medium" style="color: var(--color-text-medium);">供貨商 (選填)</label>
+                        <input type="text" id="material-supplier" placeholder="A 牌、B 牌..." class="mt-1 w-full p-2 rounded-lg text-sm">
+                    </div>
+                    <div class="lg:col-span-2">
+                        <label for="material-yield" class="block text-sm font-medium" style="color: var(--color-text-medium);">可使用得率 (%)</label>
+                        <input type="number" id="material-yield" placeholder="得率 (%) e.g. 95.5" required min="0.01" max="100" step="0.01" class="mt-1 w-full p-2 rounded-lg text-sm text-right">
+                    </div>
+                    
+                    <!-- 採購資訊 (3 欄位) -->
+                    <div>
+                        <label for="material-price" class="block text-sm font-medium" style="color: var(--color-text-medium);">進價/包 (未稅, 元)</label>
+                        <input type="number" id="material-price" placeholder="價格" required min="0.01" step="0.01" class="mt-1 w-full p-2 rounded-lg text-sm text-right">
+                    </div>
+                    <div>
+                        <label for="material-spec" class="block text-sm font-medium" style="color: var(--color-text-medium);">採購規格 (總數量)</label>
+                        <input type="number" id="material-spec" placeholder="數量" required min="0.01" step="0.01" class="mt-1 w-full p-2 rounded-lg text-sm text-right">
+                    </div>
+                    <div>
+                        <label for="material-cost-unit" class="block text-sm font-medium" style="color: var(--color-text-medium);">規格單位 (最小計算單位)</label>
+                        <select id="material-cost-unit" required class="mt-1 w-full p-2 rounded-lg text-sm">
+                            <option value="" disabled selected>選擇單位</option>
+                            <!-- 確保選項在深色背景下可讀 -->
+                            <option value="kg" class="bg-gray-700 text-white">公斤 (kg)</option>
+                            <option value="g" class="bg-gray-700 text-white">公克 (g)</option>
+                            <option value="L" class="bg-gray-700 text-white">公升 (L)</option>
+                            <option value="ml" class="bg-gray-700 text-white">毫升 (ml)</option>
+                            <option value="unit" class="bg-gray-700 text-white">個/單位 (unit)</option>
+                            <option value="包" class="bg-gray-700 text-white">包 (包)</option> <!-- 新增 '包' -->
+                        </select>
+                    </div>
+
+                    <!-- 計算結果與按鈕 (2 欄位) -->
+                    <div class="sm:col-span-2 lg:col-span-3 pt-3">
+                        <p class="text-sm font-medium" style="color: var(--color-text-medium);">計算出的單價 (元/單位)</p>
+                        <p class="text-3xl font-extrabold text-white" style="color: var(--color-gold-accent);">
+                            <span id="calculated-yield-cost">0.0000</span> / <span id="calculated-cost-unit">單位</span>
+                        </p>
+                    </div>
+
+                    <div class="sm:col-span-2 lg:col-span-3 pt-3 flex items-end">
+                        <button type="submit" id="material-submit-btn" class="w-full p-3 rounded-lg btn-primary shadow-md hover:shadow-lg">
+                            <i data-lucide="plus" class="w-5 h-5 inline-block mr-2"></i>
+                            新增原物料
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- 食譜成本計算器內容 -->
+        <div id="tab-content-recipes" class="tab-content hidden">
+            <h2 class="text-2xl font-semibold mb-4 border-b pb-2 text-white" style="border-color: #3f3f46;">食譜成本計算器與售價建議</h2>
+            
+            <!-- 食譜列表 -->
+            <div id="recipe-list-container" class="scroll-container bg-transparent p-0 md:p-2 rounded-xl mb-8">
+                <div id="recipe-list" class="space-y-4">
+                    <p class="text-center py-6" style="color: var(--color-text-medium);">目前沒有食譜。請新增。</p>
+                </div>
+            </div>
+
+            <!-- 新增食譜/計算器區域 -->
+            <div id="recipe-calculator" class="p-5 md:p-7 rounded-xl shadow-xl" style="background-color: #262626; border: 1px solid var(--color-text-medium);">
+                <h3 class="text-xl font-bold mb-4 flex items-center text-white">
+                    <i data-lucide="chef-hat" class="w-5 h-5 mr-2" style="color: var(--color-gold-accent);"></i>
+                    編輯食譜與成本分析
+                </h3>
+                <form id="recipe-form" class="space-y-6">
+                    <input type="hidden" id="recipe-doc-id">
+                    
+                    <div>
+                        <label for="recipe-name" class="block text-sm font-medium" style="color: var(--color-text-medium);">食譜/產品名稱</label>
+                        <input type="text" id="recipe-name" placeholder="食譜名稱 (e.g., 草莓蛋糕)" required class="w-full p-3 text-lg rounded-lg focus:ring-amber-500 focus:border-amber-500 mt-1">
+                    </div>
+                    
+                    <!-- 食材清單 -->
+                    <div>
+                        <label class="block text-sm font-bold mb-2 text-white">食材清單 (使用數量)</label>
+                        <div id="ingredient-input-container" class="space-y-3 p-3 rounded-lg" style="border: 1px solid #52525B; background-color: #171717;">
+                            <!-- 動態新增的食材輸入欄位會在這裡 -->
+                            <p class="text-sm italic text-center py-2" style="color: var(--color-text-medium);">請在下方新增食材。</p>
+                        </div>
+                        <button type="button" id="add-ingredient-btn" class="text-sm font-medium flex items-center mt-3 p-2 rounded-md transition" style="color: var(--color-gold-accent); border: 1px dashed var(--color-gold-accent);">
+                            <i data-lucide="plus-circle" class="w-5 h-5 mr-1"></i>
+                            新增食材項目
+                        </button>
+                    </div>
+
+
+                    <!-- 成本/售價計算結果 -->
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 border-t pt-4 mt-4" style="border-color: #3f3f46;">
+                        <!-- 總成本 -->
+                        <div class="col-span-1 data-display-box p-3 rounded-lg">
+                            <p class="text-sm font-medium" style="color: var(--color-text-medium);">總食材成本</p>
+                            <p class="text-2xl font-extrabold mt-1 text-green-400">
+                                <span id="calculated-cost">0.00</span> <span class="text-base" style="color: var(--color-text-light);">元</span>
+                            </p>
+                        </div>
+
+                        <!-- 目標毛利率 -->
+                        <div class="col-span-1 data-display-box p-3 rounded-lg">
+                            <label for="recipe-target-margin" class="block text-sm font-medium" style="color: var(--color-text-medium);">目標毛利率 (%)</label>
+                            <input type="number" id="recipe-target-margin" value="50" min="0" max="100" step="1" 
+                                class="w-full p-2 rounded-lg text-xl font-bold text-center mt-1 text-red-400"
+                                oninput="calculateCurrentRecipeCost()" style="background-color: #52525B;">
+                        </div>
+                        
+                        <!-- 建議售價 -->
+                        <div class="col-span-1 data-display-box p-3 rounded-lg">
+                            <p class="text-sm font-medium" style="color: var(--color-text-medium);">建議售價 (未稅)</p>
+                            <p class="text-2xl font-extrabold mt-1" style="color: var(--color-gold-accent);">
+                                <span id="calculated-selling-price">0.00</span> <span class="text-base" style="color: var(--color-text-light);">元</span>
+                            </p>
+                        </div>
+                    </div>
+                    
+                    <!-- 儲存按鈕 -->
+                    <div class="flex justify-end space-x-3 pt-4">
+                        <button type="button" id="cancel-recipe-edit-btn" class="p-3 rounded-lg font-semibold shadow-md btn-secondary">
+                            <i data-lucide="x" class="w-5 h-5 inline-block mr-1"></i>
+                            取消
+                        </button>
+                        <button type="submit" id="recipe-submit-btn" class="p-3 rounded-lg font-semibold shadow-md btn-primary">
+                            <i data-lucide="save" class="w-5 h-5 inline-block mr-1"></i>
+                            儲存食譜
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 初始化 Lucide Icons -->
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            lucide.createIcons();
+        });
+    </script>
+
+    <!-- 核心單機 JavaScript 邏輯 -->
+    <script>
+        // --- 全域變數及 localStorage Keys ---
+        let materials = {}; // 儲存原物料數據 { id: materialData }
+        let recipes = []; // 儲存食譜數據
+        
+        const STORAGE_KEY_MATERIALS = 'rawMaterialsData';
+        const STORAGE_KEY_RECIPES = 'recipesData';
+        
+        // 輔助函式：產生唯一 ID
+        const generateId = () => Date.now().toString(36) + Math.random().toString(36).substring(2, 9);
+
+
+        // 從使用者 CSV 檔案中解析出的初始原物料資料
+        // 欄位: supplier(供貨商), name(材料名稱), purchasePrice(進價未稅), specification(規格), costUnit(單位), yieldPercentage(得率%), yieldCostPerUnit(得率單價)
+        const INITIAL_RAW_MATERIALS = [
+            { supplier: "", name: "中粉", purchasePrice: 45, specification: 1000, costUnit: "g", yieldPercentage: 100, yieldCostPerUnit: 0.045 },
+            { supplier: "", name: "低粉", purchasePrice: 45, specification: 1000, costUnit: "g", yieldPercentage: 100, yieldCostPerUnit: 0.045 },
+            { supplier: "", name: "糖", purchasePrice: 36, specification: 1000, costUnit: "g", yieldPercentage: 100, yieldCostPerUnit: 0.036 },
+            { supplier: "", name: "糖粉", purchasePrice: 45, specification: 600, costUnit: "g", yieldPercentage: 100, yieldCostPerUnit: 0.075 },
+            { supplier: "", name: "泡打粉", purchasePrice: 93, specification: 113, costUnit: "g", yieldPercentage: 100, yieldCostPerUnit: 0.8230 },
+            { supplier: "", name: "玉米粉", purchasePrice: 35, specification: 600, costUnit: "g", yieldPercentage: 100, yieldCostPerUnit: 0.0583 },
+            { supplier: "", name: "可可粉", purchasePrice: 210, specification: 226, costUnit: "g", yieldPercentage: 100, yieldCostPerUnit: 0.9292 },
+            { supplier: "", name: "抹茶粉", purchasePrice: 100, specification: 100, costUnit: "g", yieldPercentage: 100, yieldCostPerUnit: 1.0000 },
+            { supplier: "不知名", name: "伯爵粉", purchasePrice: 150, specification: 50, costUnit: "g", yieldPercentage: 100, yieldCostPerUnit: 3.0000 },
+            { supplier: "", name: "青花椒粉", purchasePrice: 45, specification: 26, costUnit: "g", yieldPercentage: 100, yieldCostPerUnit: 1.7308 },
+            { supplier: "", name: "杏仁粉", purchasePrice: 160, specification: 600, costUnit: "g", yieldPercentage: 100, yieldCostPerUnit: 0.2667 },
+            { supplier: "", name: "低粉(嘉禾粉)", purchasePrice: 70, specification: 1000, costUnit: "g", yieldPercentage: 100, yieldCostPerUnit: 0.0700 },
+            { supplier: "天仁", name: "天仁茗茶", purchasePrice: 104, specification: 50, costUnit: "包", yieldPercentage: 100, yieldCostPerUnit: 2.0800 },
+        ];
+
+
+        // 單位換算分組及乘數表
+        const UNIT_GROUPS = {
+            'g': { // 重量基準單位：g (公克)
+                'g': 1,
+                'kg': 1000,
+            },
+            'ml': { // 容量基準單位：ml (毫升)
+                'ml': 1,
+                'L': 1000,
+            },
+            'unit': { // 單位基準單位：unit (個/單位)
+                'unit': 1,
+                '包': 1, // 將 '包' 視為 'unit' 的別名
+            }
+        };
+
+        // 輔助函式：取得單位名稱
+        const getUnitName = (unit) => {
+            switch(unit) {
+                case 'kg': return '公斤';
+                case 'g': return '公克';
+                case 'L': return '公升';
+                case 'ml': return '毫升';
+                case 'unit': return '單位';
+                case '包': return '包'; 
+                default: return unit;
+            }
+        };
+
+        
+        // --- 單機資料存取函式 ---
+        
+        /**
+         * 從 localStorage 讀取資料
+         * @param {string} key - localStorage key
+         * @param {any} defaultVal - 預設值 (通常是 {} 或 [])
+         * @returns {any} 解析後的資料
+         */
+        const loadDataLocal = (key, defaultVal) => {
+            try {
+                const data = localStorage.getItem(key);
+                return data ? JSON.parse(data) : defaultVal;
+            } catch (error) {
+                console.error(`讀取 localStorage 失敗 (${key}):`, error);
+                return defaultVal;
+            }
+        };
+
+        /**
+         * 將資料儲存到 localStorage
+         * @param {string} key - localStorage key
+         * @param {any} data - 要儲存的資料
+         */
+        const saveDataLocal = (key, data) => {
+            try {
+                localStorage.setItem(key, JSON.stringify(data));
+                console.log(`資料已儲存到 localStorage: ${key}`);
+            } catch (error) {
+                console.error(`寫入 localStorage 失敗 (${key}):`, error);
+                // 可以彈出一個警告 Modal 提示使用者儲存失敗
+            }
+        };
+        
+        // --- 初始資料檢查與載入 ---
+        const initializeAppData = () => {
+            // 1. 檢查並載入初始原物料數據
+            let loadedMaterials = loadDataLocal(STORAGE_KEY_MATERIALS, null);
+            
+            if (!loadedMaterials || Object.keys(loadedMaterials).length === 0) {
+                console.log("localStorage 為空，開始載入初始原物料數據...");
+                loadedMaterials = {};
+                INITIAL_RAW_MATERIALS.forEach(material => {
+                     // 產生唯一的 ID
+                    const id = generateId(); 
+                    // 確保得率單價正確計算
+                    const yieldCostPerUnit = calculateYieldCost(material.purchasePrice, material.specification, material.yieldPercentage);
+                    loadedMaterials[id] = { id, ...material, yieldCostPerUnit };
+                });
+            }
+            // 儲存到全域變數並立即渲染
+            saveRawMaterialsLocal(loadedMaterials); 
+            
+            // 2. 載入食譜
+            const loadedRecipes = loadDataLocal(STORAGE_KEY_RECIPES, []);
+            saveRecipesLocal(loadedRecipes); 
+        };
+
+        // --- 原物料 (Raw Materials) 邏輯 ---
+        
+        // 計算得率單價
+        const calculateYieldCost = (purchasePrice, specification, yieldPercentage) => {
+            if (isNaN(purchasePrice) || purchasePrice <= 0 || isNaN(specification) || specification <= 0 || isNaN(yieldPercentage) || yieldPercentage <= 0) {
+                return 0;
+            }
+            // 公式: (進價 / 規格) / (得率 / 100)
+            return (purchasePrice / specification) / (yieldPercentage / 100);
+        };
+        
+        /**
+         * 儲存原物料到 localStorage，並更新 UI
+         * @param {object} newMaterials - 包含所有 materialData 的物件
+         */
+        const saveRawMaterialsLocal = (newMaterials) => {
+            materials = newMaterials;
+            saveDataLocal(STORAGE_KEY_MATERIALS, materials);
+            
+            // 轉為陣列以便排序和渲染
+            let materialArray = Object.values(materials);
+            materialArray.sort((a, b) => a.name.localeCompare(b.name, 'zh-TW'));
+            
+            renderMaterialList(materialArray);
+            updateRecipeIngredientsForm(); // 更新食譜編輯區的材料選項
+            calculateCurrentRecipeCost(); // 重新計算當前食譜成本
+        };
+
+        const updateCalculatedCostDisplay = () => {
+            const price = parseFloat(document.getElementById('material-price').value);
+            const spec = parseFloat(document.getElementById('material-spec').value);
+            const yieldPerc = parseFloat(document.getElementById('material-yield').value);
+            const costUnit = document.getElementById('material-cost-unit').value;
+            
+            const calculatedCost = calculateYieldCost(price, spec, yieldPerc);
+            
+            document.getElementById('calculated-yield-cost').textContent = calculatedCost.toFixed(4);
+            document.getElementById('calculated-cost-unit').textContent = getUnitName(costUnit) || '單位'; // 顯示最小單位名稱
+        };
+
+        const renderMaterialList = (materialArray) => {
+            const listEl = document.getElementById('material-list');
+            listEl.innerHTML = '';
+            
+            if (materialArray.length === 0) {
+                listEl.innerHTML = '<p class="text-center py-6" style="color: var(--color-text-medium);">目前沒有原物料。請新增。</p>';
+                return;
+            }
+
+            materialArray.forEach(m => {
+                const supplierText = m.supplier ? `<span class="text-xs block" style="color: var(--color-text-medium);">供貨商: ${m.supplier}</span>` : '';
+                const costUnitName = getUnitName(m.costUnit);
+                
+                const itemEl = document.createElement('div');
+                itemEl.className = 'flex flex-col md:grid md:grid-cols-12 items-center gap-3 p-4 rounded-lg transition duration-150 shadow-md hover:shadow-xl';
+                itemEl.style.backgroundColor = '#262626'; /* 深色卡片背景 */
+                itemEl.style.border = '1px solid #3f3f46'; /* 邊框 */
+                itemEl.innerHTML = `
+                    <!-- 1. 名稱與供應商 -->
+                    <div class="md:col-span-4 w-full">
+                        <p class="font-bold text-lg text-white">${m.name}</p>
+                        ${supplierText}
+                    </div>
+                    
+                    <!-- 2. 採購資訊 (手機上堆疊) -->
+                    <div class="md:col-span-4 w-full grid grid-cols-2 text-sm gap-x-4" style="color: var(--color-text-light);">
+                        <p class="truncate">價格: <span class="font-semibold">${m.purchasePrice.toFixed(2)} 元</span></p>
+                        <p class="truncate">得率: <span class="font-semibold">${m.yieldPercentage.toFixed(1)}%</span></p>
+                        <p class="truncate">規格: <span class="font-semibold">${m.specification} ${costUnitName}</span></p>
+                    </div>
+
+                    <!-- 3. 得率單價 (最重要) -->
+                    <div class="md:col-span-3 w-full text-right p-2 rounded-lg border" style="background-color: #3f3f46; border-color: var(--color-gold-accent);">
+                        <p class="text-sm font-medium" style="color: var(--color-text-medium);">單價 (元 / ${costUnitName})</p>
+                        <p class="text-xl font-extrabold" style="color: var(--color-gold-accent);">${m.yieldCostPerUnit.toFixed(4)}</p>
+                    </div>
+
+                    <!-- 4. 操作按鈕 (使用 Icon) -->
+                    <div class="md:col-span-1 flex space-x-2 w-full justify-end">
+                        <button data-id="${m.id}" data-action="edit" class="edit-material-btn text-yellow-400 hover:text-yellow-600 p-2 rounded-full hover:bg-gray-700 transition" title="編輯">
+                            <i data-lucide="pencil" class="w-5 h-5"></i>
+                        </button>
+                        <button data-id="${m.id}" data-action="delete" class="delete-material-btn text-red-400 hover:text-red-600 p-2 rounded-full hover:bg-gray-700 transition" title="刪除">
+                            <i data-lucide="trash-2" class="w-5 h-5"></i>
+                        </button>
+                    </div>
+                `;
+                listEl.appendChild(itemEl);
+                // 重新初始化 Lucide 圖標，因為是動態插入的
+                lucide.createIcons();
+            });
+        };
+
+        const handleMaterialSubmit = (e) => {
+            e.preventDefault();
+
+            const id = document.getElementById('material-id').value;
+            const name = document.getElementById('material-name').value;
+            const supplier = document.getElementById('material-supplier').value;
+            const purchasePrice = parseFloat(document.getElementById('material-price').value);
+            const specification = parseFloat(document.getElementById('material-spec').value);
+            const costUnit = document.getElementById('material-cost-unit').value;
+            const yieldPercentage = parseFloat(document.getElementById('material-yield').value);
+
+            const yieldCostPerUnit = calculateYieldCost(purchasePrice, specification, yieldPercentage);
+
+            if (!name || isNaN(purchasePrice) || purchasePrice <= 0 || isNaN(specification) || specification <= 0 || !costUnit || isNaN(yieldPercentage) || yieldPercentage <= 0) {
+                console.error("輸入資料無效，請檢查所有必填欄位。");
+                return;
+            }
+            if (yieldCostPerUnit === 0) {
+                 console.error("計算得率單價失敗，請檢查輸入的價格、規格或得率是否為 0。");
+                 return;
+            }
+
+            const materialData = { name, supplier, purchasePrice, specification, costUnit, yieldPercentage, yieldCostPerUnit };
+            
+            const newMaterials = { ...materials };
+
+            if (id) {
+                newMaterials[id] = { ...materialData, id };
+                console.log("原物料更新成功:", id);
+            } else {
+                const newId = generateId();
+                newMaterials[newId] = { ...materialData, id: newId };
+                console.log("原物料新增成功");
+            }
+            
+            saveRawMaterialsLocal(newMaterials);
+            resetMaterialForm();
+        };
+
+        const editMaterial = (id) => {
+            const material = materials[id];
+            if (!material) return;
+            
+            document.getElementById('material-id').value = id;
+            document.getElementById('material-name').value = material.name;
+            document.getElementById('material-supplier').value = material.supplier || '';
+            document.getElementById('material-price').value = material.purchasePrice;
+            document.getElementById('material-spec').value = material.specification;
+            document.getElementById('material-cost-unit').value = material.costUnit;
+            document.getElementById('material-yield').value = material.yieldPercentage;
+            
+            updateCalculatedCostDisplay(); // 更新顯示
+            
+            document.getElementById('material-submit-btn').innerHTML = '<i data-lucide="save" class="w-5 h-5 inline-block mr-2"></i> 更新原物料';
+            document.getElementById('material-submit-btn').classList.remove('btn-primary');
+            document.getElementById('material-submit-btn').classList.add('bg-blue-600', 'hover:bg-blue-700', 'text-white');
+            lucide.createIcons();
+            
+            // 捲動到表單
+            document.getElementById('material-form').scrollIntoView({ behavior: 'smooth' });
+        };
+
+        const deleteMaterial = (id) => {
+            if (!confirmAction("確定要刪除此原物料嗎? 此操作無法復原。")) return; 
+
+            const newMaterials = { ...materials };
+            if (newMaterials[id]) {
+                delete newMaterials[id];
+                console.log("原物料刪除成功:", id);
+                saveRawMaterialsLocal(newMaterials);
+                resetMaterialForm();
+            }
+        };
+
+        const resetMaterialForm = () => {
+            document.getElementById('material-form').reset();
+            document.getElementById('material-id').value = '';
+            document.getElementById('calculated-yield-cost').textContent = '0.0000';
+            document.getElementById('calculated-cost-unit').textContent = '單位';
+            document.getElementById('material-submit-btn').innerHTML = '<i data-lucide="plus" class="w-5 h-5 inline-block mr-2"></i> 新增原物料';
+            document.getElementById('material-submit-btn').classList.remove('bg-blue-600', 'hover:bg-blue-700', 'text-white');
+            document.getElementById('material-submit-btn').classList.add('btn-primary');
+            lucide.createIcons();
+        };
+
+        // --- 食譜 (Recipes) 邏輯 ---
+        
+        /**
+         * 儲存食譜到 localStorage，並更新 UI
+         * @param {array} newRecipes - 包含所有食譜物件的陣列
+         */
+        const saveRecipesLocal = (newRecipes) => {
+            recipes = newRecipes;
+            saveDataLocal(STORAGE_KEY_RECIPES, recipes);
+            
+            // 按名稱排序
+            recipes.sort((a, b) => a.name.localeCompare(b.name, 'zh-TW'));
+            renderRecipeList(recipes);
+        };
+        
+        // 計算建議售價
+        const calculateSellingPrice = (totalCost, targetMarginPercentage) => {
+            if (isNaN(totalCost) || totalCost < 0 || isNaN(targetMarginPercentage) || targetMarginPercentage >= 100 || targetMarginPercentage < 0) {
+                 if (targetMarginPercentage >= 100) return 0;
+                return 0;
+            }
+            const marginRate = targetMarginPercentage / 100;
+            // 建議售價 = 總成本 / (1 - 毛利率)
+            return totalCost / (1 - marginRate);
+        };
+
+
+        // 這裡使用 yieldCostPerUnit (得率單價)
+        const calculateIngredientCost = (materialId, quantity, recipeUnit) => {
+            const material = materials[materialId];
+            if (!material || isNaN(quantity) || quantity <= 0) return 0;
+
+            const costUnit = material.costUnit; // 最小計算單位 (g, ml, unit)
+            const yieldCostPerUnit = material.yieldCostPerUnit; // 得率單價
+
+            let multiplier = 0; 
+            
+            // 尋找 costUnit 屬於哪個群組
+            const costUnitGroupName = Object.keys(UNIT_GROUPS).find(groupName => 
+                Object.keys(UNIT_GROUPS[groupName]).includes(costUnit)
+            );
+            
+            // 尋找 recipeUnit 屬於哪個群組
+            const recipeUnitGroupName = Object.keys(UNIT_GROUPS).find(groupName => 
+                Object.keys(UNIT_GROUPS[groupName]).includes(recipeUnit)
+            );
+
+            // 確保兩單位屬於同一群組
+            if (costUnitGroupName && recipeUnitGroupName && costUnitGroupName === recipeUnitGroupName) {
+                const group = UNIT_GROUPS[costUnitGroupName];
+                
+                // recipeUnit 轉換為 costUnit 的乘數 = (recipeUnit to base multiplier) / (costUnit to base multiplier)
+                multiplier = group[recipeUnit] / group[costUnit];
+                
+            } else if (costUnit === recipeUnit) {
+                multiplier = 1; // 單位相同，乘數為 1
+            } else {
+                 // 單位不一致且沒有明確的換算或不同組
+                 console.warn(`無法轉換單位: 從 ${recipeUnit} 到 ${costUnit} (物料: ${material.name})`);
+                return 0;
+            }
+
+            return quantity * multiplier * yieldCostPerUnit;
+        };
+
+        const calculateRecipeTotalCost = (ingredients) => {
+            let totalCost = 0;
+            if (ingredients && Array.isArray(ingredients)) {
+                ingredients.forEach(ing => {
+                    totalCost += calculateIngredientCost(ing.materialId, ing.quantity, ing.recipeUnit);
+                });
+            }
+            return totalCost;
+        };
+        
+        // 即時計算當前編輯食譜的成本、毛利率和售價
+        window.calculateCurrentRecipeCost = () => {
+            const ingredientInputs = document.querySelectorAll('.ingredient-input-group');
+            const currentIngredients = [];
+            ingredientInputs.forEach(group => {
+                const materialId = group.querySelector('.ingredient-material-id').value;
+                const quantity = parseFloat(group.querySelector('.ingredient-quantity').value);
+                const recipeUnit = group.querySelector('.ingredient-unit').value;
+                if (materialId && !isNaN(quantity) && quantity > 0 && recipeUnit) {
+                    currentIngredients.push({ materialId, quantity, recipeUnit });
+                }
+            });
+
+            const totalCost = calculateRecipeTotalCost(currentIngredients);
+            
+            const targetMarginInput = document.getElementById('recipe-target-margin');
+            let targetMargin = parseInt(targetMarginInput.value, 10) || 0;
+            
+            // 確保毛利率在 [0, 100] 之間
+            targetMargin = Math.max(0, Math.min(100, targetMargin));
+            targetMarginInput.value = targetMargin;
+
+            const sellingPrice = calculateSellingPrice(totalCost, targetMargin);
+
+            document.getElementById('calculated-cost').textContent = `${totalCost.toFixed(2)}`;
+            document.getElementById('calculated-selling-price').textContent = sellingPrice.toFixed(2);
+        };
+
+        const renderRecipeList = (recipeArray) => {
+            const listEl = document.getElementById('recipe-list');
+            listEl.innerHTML = '';
+            
+            if (recipeArray.length === 0) {
+                listEl.innerHTML = '<p class="text-center py-6" style="color: var(--color-text-medium);">目前沒有食譜。請新增。</p>';
+                return;
+            }
+
+            recipeArray.forEach(r => {
+                const totalCost = calculateRecipeTotalCost(r.ingredients);
+                const targetMargin = r.targetMargin || 50; // 使用儲存的毛利率，預設 50%
+                const sellingPrice = calculateSellingPrice(totalCost, targetMargin);
+
+                const itemEl = document.createElement('div');
+                itemEl.className = 'p-4 rounded-lg transition duration-150 shadow-md';
+                itemEl.style.backgroundColor = '#262626'; /* 深色卡片背景 */
+                itemEl.style.border = '1px solid #3f3f46'; /* 邊框 */
+                itemEl.innerHTML = `
+                    <div class="flex justify-between items-start mb-3 border-b pb-2" style="border-color: #3f3f46;">
+                        <p class="text-xl font-bold" style="color: var(--color-gold-accent);">${r.name}</p>
+                        <div class="text-right">
+                            <p class="text-xs" style="color: var(--color-text-medium);">目標毛利率:</p>
+                            <span class="text-xl font-extrabold text-red-400">${targetMargin.toFixed(0)}%</span>
+                        </div>
+                    </div>
+                    
+                    <div class="grid grid-cols-2 gap-4 mb-3">
+                        <div class="data-display-box p-3 rounded-lg">
+                            <span class="text-sm" style="color: var(--color-text-medium);">總成本:</span>
+                            <p class="text-xl font-bold text-green-400">${totalCost.toFixed(2)} 元</p>
+                        </div>
+                        <div class="data-display-box p-3 rounded-lg">
+                            <span class="text-sm" style="color: var(--color-text-medium);">建議售價:</span>
+                            <p class="text-xl font-bold" style="color: var(--color-gold-accent);">${sellingPrice.toFixed(2)} 元</p>
+                        </div>
+                    </div>
+                    
+                    <!-- 食材明細 (手機上較為緊湊) -->
+                    <div class="text-sm mt-4 border-t pt-3 space-y-1" style="border-color: #3f3f46; color: var(--color-text-light);">
+                        <p class="font-semibold text-white">食材明細:</p>
+                        ${r.ingredients.map(ing => {
+                            const material = materials[ing.materialId];
+                            if (!material) return `<span class="text-red-400">找不到物料 (ID: ${ing.materialId})</span>`;
+                            const cost = calculateIngredientCost(ing.materialId, ing.quantity, ing.recipeUnit);
+                            const unitName = getUnitName(ing.recipeUnit);
+                            return `
+                                <div class="flex justify-between text-xs md:text-sm">
+                                    <span class="text-gray-300">${material.name} (${ing.quantity} ${unitName})</span>
+                                    <span class="font-medium text-green-400">${cost.toFixed(2)} 元</span>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+
+                    <div class="flex justify-end space-x-2 mt-4 border-t pt-3" style="border-color: #3f3f46;">
+                        <button data-id="${r.id}" data-action="edit" class="edit-recipe-btn text-yellow-400 hover:text-yellow-600 p-2 rounded-full hover:bg-gray-700 transition" title="編輯">
+                            <i data-lucide="pencil" class="w-5 h-5"></i>
+                        </button>
+                        <button data-id="${r.id}" data-action="delete" class="delete-recipe-btn text-red-400 hover:text-red-600 p-2 rounded-full hover:bg-gray-700 transition" title="刪除">
+                            <i data-lucide="trash-2" class="w-5 h-5"></i>
+                        </button>
+                    </div>
+                `;
+                listEl.appendChild(itemEl);
+                lucide.createIcons();
+            });
+        };
+        
+        const handleRecipeSubmit = (e) => {
+            e.preventDefault();
+
+            const id = document.getElementById('recipe-doc-id').value;
+            const name = document.getElementById('recipe-name').value.trim();
+            
+            let targetMargin = parseInt(document.getElementById('recipe-target-margin').value, 10) || 0;
+            targetMargin = Math.max(0, Math.min(100, targetMargin));
+
+            const ingredientInputs = document.querySelectorAll('.ingredient-input-group');
+            
+            if (!name) {
+                console.error("食譜名稱不能為空");
+                return;
+            }
+
+            const ingredients = [];
+            ingredientInputs.forEach(group => {
+                const materialId = group.querySelector('.ingredient-material-id').value;
+                const quantity = parseFloat(group.querySelector('.ingredient-quantity').value);
+                const recipeUnit = group.querySelector('.ingredient-unit').value;
+                
+                if (materialId && !isNaN(quantity) && quantity > 0 && recipeUnit) {
+                    ingredients.push({ materialId, quantity, recipeUnit });
+                }
+            });
+
+            if (ingredients.length === 0) {
+                 console.error("食譜至少需要一個食材");
+                return;
+            }
+
+            const recipeData = { name, ingredients, targetMargin };
+            let newRecipes = [...recipes];
+
+            if (id) {
+                // 更新現有食譜
+                const index = newRecipes.findIndex(r => r.id === id);
+                if (index > -1) {
+                    newRecipes[index] = { ...recipeData, id };
+                    console.log("食譜更新成功:", id);
+                }
+            } else {
+                // 新增食譜
+                const newId = generateId();
+                newRecipes.push({ ...recipeData, id: newId });
+                console.log("食譜新增成功");
+            }
+            
+            saveRecipesLocal(newRecipes);
+            resetRecipeForm();
+        };
+
+        const editRecipe = (id) => {
+            const recipe = recipes.find(r => r.id === id);
+            if (!recipe) return;
+
+            document.getElementById('recipe-doc-id').value = id;
+            document.getElementById('recipe-name').value = recipe.name;
+            document.getElementById('recipe-target-margin').value = Math.round(recipe.targetMargin || 50); 
+            
+            document.getElementById('recipe-submit-btn').innerHTML = '<i data-lucide="save" class="w-5 h-5 inline-block mr-1"></i> 更新食譜';
+            document.getElementById('recipe-submit-btn').classList.remove('btn-primary');
+            document.getElementById('recipe-submit-btn').classList.add('bg-blue-600', 'hover:bg-blue-700', 'text-white');
+            lucide.createIcons();
+
+            // 載入食材
+            const container = document.getElementById('ingredient-input-container');
+            container.innerHTML = '';
+            recipe.ingredients.forEach(ing => addIngredientInput(ing));
+            calculateCurrentRecipeCost();
+
+            // 切換到食譜分頁並捲動到表單
+            switchTab('recipes');
+            document.getElementById('recipe-calculator').scrollIntoView({ behavior: 'smooth' });
+        };
+
+        const deleteRecipe = (id) => {
+            if (!confirmAction("確定要刪除此食譜嗎? 此操作無法復原。")) return;
+
+            const newRecipes = recipes.filter(r => r.id !== id);
+            saveRecipesLocal(newRecipes);
+            resetRecipeForm();
+        };
+
+        const resetRecipeForm = () => {
+            document.getElementById('recipe-form').reset();
+            document.getElementById('recipe-doc-id').value = '';
+            document.getElementById('recipe-target-margin').value = 50; // 重設目標毛利率
+            document.getElementById('calculated-selling-price').textContent = '0.00'; // 重設售價
+            
+            document.getElementById('recipe-submit-btn').innerHTML = '<i data-lucide="save" class="w-5 h-5 inline-block mr-1"></i> 儲存食譜';
+            document.getElementById('recipe-submit-btn').classList.remove('bg-blue-600', 'hover:bg-blue-700', 'text-white');
+            document.getElementById('recipe-submit-btn').classList.add('btn-primary');
+            lucide.createIcons();
+
+            document.getElementById('calculated-cost').textContent = '0.00';
+
+            // 重設食材輸入欄位
+            document.getElementById('ingredient-input-container').innerHTML = '<p class="text-sm italic text-center py-2" style="color: var(--color-text-medium);">請在下方新增食材。</p>';
+        };
+
+
+        // --- 食材輸入欄位動態生成 ---
+        const addIngredientInput = (initialData = {}) => {
+            const container = document.getElementById('ingredient-input-container');
+            if (container.querySelector('p.text-sm')) {
+                container.innerHTML = ''; // 移除提示文字
+            }
+
+            const materialOptions = Object.values(materials).map(m => `
+                <option value="${m.id}" ${initialData.materialId === m.id ? 'selected' : ''} class="bg-gray-700 text-white">
+                    ${m.name} (${m.costUnit} - ${m.yieldCostPerUnit.toFixed(4)}元)
+                </option>
+            `).join('');
+
+            // 根據材料的 costUnit，提供可選的 recipe unit
+            const getUnitOptions = (selectedMaterialId, currentUnit) => {
+                const material = materials[selectedMaterialId];
+                if (!material) {
+                    return `<option value="" disabled selected class="bg-gray-700 text-white">選擇單位</option>`;
+                }
+                const costUnit = material.costUnit;
+                
+                // 找出 costUnit 所在的分組名稱
+                const groupName = Object.keys(UNIT_GROUPS).find(name => UNIT_GROUPS[name].hasOwnProperty(costUnit));
+                
+                // 如果找到分組，則提供該分組的所有單位，否則只提供成本單位
+                const units = groupName ? Object.keys(UNIT_GROUPS[groupName]) : [costUnit];
+                
+                // 處理單位選項的深色背景
+                return units.map(u => {
+                    const isSelected = currentUnit === u || (!currentUnit && u === costUnit); // 預設選擇成本單位
+                    return `<option value="${u}" ${isSelected ? 'selected' : ''} class="bg-gray-700 text-white">${getUnitName(u)} (${u})</option>`;
+                }).join('');
+            };
+
+            const inputGroup = document.createElement('div');
+            // Mobile: grid-cols-4 確保在小螢幕上緊湊，Desktop: grid-cols-12
+            inputGroup.className = 'ingredient-input-group grid grid-cols-12 gap-2 items-center p-2 rounded-lg';
+            inputGroup.style.backgroundColor = '#3f3f46'; /* Slate 700 */
+            inputGroup.style.border = '1px solid #52525B';
+
+            // 預先生成單位選項
+            let initialUnitOptions = '<option value="" disabled selected class="bg-gray-700 text-white">選擇單位</option>';
+            if (initialData.materialId) {
+                initialUnitOptions = getUnitOptions(initialData.materialId, initialData.recipeUnit);
+            }
+
+            inputGroup.innerHTML = `
+                <!-- 材料選擇 (手機佔 6 欄) -->
+                <select class="ingredient-material-id col-span-12 sm:col-span-6 p-2 rounded-md text-sm" required>
+                    <option value="" disabled ${!initialData.materialId ? 'selected' : ''} class="bg-gray-700 text-white">選擇材料 (必選)</option>
+                    ${materialOptions}
+                </select>
+                
+                <!-- 數量 (手機佔 3 欄) -->
+                <input type="number" step="0.01" min="0.01" placeholder="數量" value="${initialData.quantity || ''}" required class="ingredient-quantity col-span-4 sm:col-span-2 p-2 rounded-md text-sm text-right">
+                
+                <!-- 單位 (手機佔 3 欄) -->
+                <select class="ingredient-unit col-span-4 sm:col-span-3 p-2 rounded-md text-sm" required>
+                    ${initialUnitOptions}
+                </select>
+                
+                <!-- 移除按鈕 (手機佔 2 欄) -->
+                <button type="button" class="remove-ingredient-btn col-span-4 sm:col-span-1 text-red-400 hover:text-red-600 p-1 transition" title="移除">
+                    <i data-lucide="minus-circle" class="w-5 h-5 mx-auto"></i>
+                </button>
+            `;
+
+            // 單位變動監聽器
+            const materialSelect = inputGroup.querySelector('.ingredient-material-id');
+            const unitSelect = inputGroup.querySelector('.ingredient-unit');
+            
+            materialSelect.addEventListener('change', (e) => {
+                const selectedId = e.target.value;
+                const selectedMaterial = materials[selectedId];
+                
+                // 更新單位下拉選單，並預設選擇成本單位
+                unitSelect.innerHTML = getUnitOptions(selectedId, selectedMaterial ? selectedMaterial.costUnit : '');
+                
+                calculateCurrentRecipeCost();
+            });
+
+            // 移除按鈕監聽器
+            inputGroup.querySelector('.remove-ingredient-btn').addEventListener('click', () => {
+                inputGroup.remove();
+                calculateCurrentRecipeCost();
+                if (container.children.length === 0) {
+                     container.innerHTML = '<p class="text-sm italic text-center py-2" style="color: var(--color-text-medium);">請在下方新增食材。</p>';
+                }
+            });
+
+            // 數量/單位變動時重新計算成本
+            inputGroup.querySelector('.ingredient-quantity').addEventListener('input', calculateCurrentRecipeCost);
+            unitSelect.addEventListener('change', calculateCurrentRecipeCost);
+            
+            container.appendChild(inputGroup);
+            lucide.createIcons();
+        };
+
+        const updateRecipeIngredientsForm = () => {
+            // 重新渲染當前所有食材輸入欄位以更新 Material Select options
+            const ingredientGroups = document.querySelectorAll('.ingredient-input-group');
+            const currentInputs = [];
+            ingredientGroups.forEach(group => {
+                currentInputs.push({
+                    materialId: group.querySelector('.ingredient-material-id').value,
+                    quantity: group.querySelector('.ingredient-quantity').value,
+                    recipeUnit: group.querySelector('.ingredient-unit').value
+                });
+            });
+
+            const container = document.getElementById('ingredient-input-container');
+            const hasPlaceholder = container.querySelector('p.text-sm');
+            container.innerHTML = '';
+            currentInputs.forEach(ing => addIngredientInput(ing));
+            if (currentInputs.length === 0 && hasPlaceholder) {
+                 container.innerHTML = '<p class="text-sm italic text-center py-2" style="color: var(--color-text-medium);">請在下方新增食材。</p>';
+            }
+            calculateCurrentRecipeCost();
+        };
+
+        // --- 輔助功能與事件監聽 ---
+
+        const switchTab = (tabName) => {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+            document.querySelectorAll('.tab-button').forEach(el => el.classList.remove('active'));
+
+            document.getElementById(`tab-content-${tabName}`).classList.remove('hidden');
+            document.getElementById(`tab-${tabName}`).classList.add('active');
+        };
+
+        const confirmAction = (message) => {
+            // 在實際單機環境中，這裡應該是 window.confirm(message)
+            // 在這個虛擬環境中，我們假設使用者總是確認，並在 console 輸出警告
+            console.warn("確認操作 (請在您的應用程式中設計 Modal): " + message);
+            return true; 
+        };
+
+
+        document.addEventListener('DOMContentLoaded', () => {
+            // 載入初始資料 (從 localStorage 或預設值)
+            initializeAppData();
+
+            // PWA: 動態注入 Manifest (保持不動，以便可以在手機上安裝為 App)
+            const injectManifest = () => {
+                const manifest = {
+                    name: "食譜成本計算與管理系統",
+                    short_name: "成本分析",
+                    start_url: ".",
+                    display: "standalone", 
+                    background_color: "#171717",
+                    theme_color: "#D4AF37"
+                };
+                try {
+                    const manifestBlob = new Blob([JSON.stringify(manifest)], { type: 'application/json' });
+                    const manifestURL = URL.createObjectURL(manifestBlob);
+        
+                    const link = document.createElement('link');
+                    link.rel = 'manifest';
+                    link.href = manifestURL;
+                    document.head.appendChild(link);
+                    console.log("PWA Manifest 已動態注入.");
+                } catch (e) {
+                    console.error("無法注入 PWA Manifest:", e);
+                }
+            };
+            injectManifest();
+
+
+            // 分頁切換監聽
+            document.getElementById('tab-materials').addEventListener('click', () => switchTab('materials'));
+            document.getElementById('tab-recipes').addEventListener('click', () => switchTab('recipes'));
+
+            // 原物料事件監聽
+            document.getElementById('material-form').addEventListener('submit', handleMaterialSubmit);
+            document.getElementById('material-list-container').addEventListener('click', (e) => {
+                const btn = e.target.closest('button');
+                if (!btn) return;
+                const id = btn.getAttribute('data-id');
+                const action = btn.getAttribute('data-action');
+                if (action === 'edit') editMaterial(id);
+                if (action === 'delete') deleteMaterial(id);
+            });
+            
+            // 原物料表單輸入變動時，更新計算出的成本
+            document.getElementById('material-price').addEventListener('input', updateCalculatedCostDisplay);
+            document.getElementById('material-spec').addEventListener('input', updateCalculatedCostDisplay);
+            document.getElementById('material-cost-unit').addEventListener('change', updateCalculatedCostDisplay);
+            document.getElementById('material-yield').addEventListener('input', updateCalculatedCostDisplay);
+
+
+            // 食譜事件監聽
+            document.getElementById('recipe-form').addEventListener('submit', handleRecipeSubmit);
+            document.getElementById('add-ingredient-btn').addEventListener('click', () => addIngredientInput());
+            document.getElementById('cancel-recipe-edit-btn').addEventListener('click', resetRecipeForm);
+            
+            document.getElementById('recipe-list-container').addEventListener('click', (e) => {
+                const btn = e.target.closest('button');
+                if (!btn) return;
+                const id = btn.getAttribute('data-id');
+                const action = btn.getAttribute('data-action');
+                if (action === 'edit') editRecipe(id);
+                if (action === 'delete') deleteRecipe(id);
+            });
+
+            // 初始化時切換到第一個分頁
+            switchTab('materials');
+        });
+    </script>
+</body>
+</html>
