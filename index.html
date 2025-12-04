@@ -3,9 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>食譜成本計算與管理系統 - 單機版</title>
+    <title>食譜成本計算與管理系統 - 雲端協作版</title>
     
-    <!-- PWA / App 相關 Meta Tags (新增) -->
+    <!-- PWA / App 相關 Meta Tags -->
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="theme-color" content="#171717">
@@ -16,6 +16,21 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap" rel="stylesheet">
     <!-- Lucide Icons for a professional look -->
     <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <!-- 引入 Firebase SDK (重要：為了實現雲端協作) -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, setPersistence, browserSessionPersistence } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, deleteDoc, onSnapshot, collection, setLogLevel, addDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        
+        // 將 Firebase 相關變數掛載到 window，以便核心邏輯使用
+        window.firebase = {
+            initializeApp, getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, 
+            getFirestore, doc, setDoc, deleteDoc, onSnapshot, collection, setLogLevel, addDoc,
+            setPersistence, browserSessionPersistence
+        };
+    </script>
+
     <style>
         /* 定義黑金色調 */
         :root {
@@ -82,6 +97,17 @@
         .btn-secondary:hover {
             background-color: #64748B; /* Slate 500 */
         }
+        
+        /* 匯出按鈕 (特別的深色) */
+        .btn-export {
+            background-color: #047857; /* Emerald 700 */
+            color: white; 
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+        .btn-export:hover {
+            background-color: #059669; /* Emerald 600 */
+        }
 
         /* 隱藏數字輸入箭頭 */
         input[type=number]::-webkit-inner-spin-button, 
@@ -99,6 +125,24 @@
             border: 1px solid var(--color-gold-accent);
             color: var(--color-text-light);
         }
+        
+        /* 協作狀態顯示 */
+        #collaboration-status {
+            background-color: #047857; /* Emerald 700 */
+            color: white;
+            padding: 4px 8px;
+            border-radius: 8px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            margin-left: 1rem;
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+          0% { box-shadow: 0 0 0 0 rgba(4, 120, 87, 0.7); }
+          70% { box-shadow: 0 0 0 8px rgba(4, 120, 87, 0); }
+          100% { box-shadow: 0 0 0 0 rgba(4, 120, 87, 0); }
+        }
 
     </style>
 </head>
@@ -108,7 +152,11 @@
         <header class="mb-8">
             <h1 class="text-3xl md:text-4xl font-extrabold flex items-center text-white">
                 <i data-lucide="calculator" class="w-7 h-7 mr-3" style="color: var(--color-gold-accent);"></i>
-                食譜成本分析與管理 (單機模式)
+                食譜成本分析與管理 (雲端協作模式)
+                <span id="collaboration-status" class="flex items-center">
+                    <i data-lucide="cloud" class="w-4 h-4 mr-1"></i>
+                    連線中
+                </span>
             </h1>
         </header>
 
@@ -126,17 +174,16 @@
 
         <!-- 原物料資料庫內容 -->
         <div id="tab-content-materials" class="tab-content">
-            <h2 class="text-2xl font-semibold mb-4 border-b pb-2 text-white" style="border-color: #3f3f46;">原物料資料庫 (單位成本分析)</h2>
-            
-            <div id="material-list-container" class="scroll-container bg-transparent p-0 md:p-2 rounded-xl">
-                <!-- 原物料列表將在這裡渲染 -->
-                <div id="material-list" class="space-y-4">
-                    <p class="text-center py-6" style="color: var(--color-text-medium);">目前沒有原物料。請新增。</p>
-                </div>
+            <div class="flex justify-between items-center mb-4 border-b pb-2" style="border-color: #3f3f46;">
+                <h2 class="text-2xl font-semibold text-white">原物料資料庫</h2>
+                <button id="export-materials-btn" class="p-2 rounded-lg text-sm btn-export flex items-center">
+                     <i data-lucide="file-text" class="w-4 h-4 mr-1"></i> 匯出 CSV
+                </button>
             </div>
 
-            <!-- 新增/編輯原物料表單 -->
-            <div class="mt-8 p-5 md:p-7 rounded-xl shadow-xl" style="background-color: #262626; border: 1px solid var(--color-gold-accent);">
+
+            <!-- 新增/編輯原物料表單 (移到最上方) -->
+            <div class="mb-8 p-5 md:p-7 rounded-xl shadow-xl" style="background-color: #262626; border: 1px solid var(--color-gold-accent);">
                 <h3 class="text-xl font-bold mb-4 flex items-center" style="color: var(--color-gold-accent);">
                      <i data-lucide="square-pen" class="w-5 h-5 mr-2"></i>
                     新增/編輯原物料項目
@@ -197,21 +244,29 @@
                     </div>
                 </form>
             </div>
+            
+            <!-- 原物料列表 (移到下方) -->
+            <h3 class="text-xl font-semibold mb-4 border-b pb-2 text-white" style="border-color: #3f3f46;">已儲存的原物料清單 (雲端同步)</h3>
+            <div id="material-list-container" class="scroll-container bg-transparent p-0 md:p-2 rounded-xl">
+                <!-- 原物料列表將在這裡渲染 -->
+                <div id="material-list" class="space-y-4">
+                    <p class="text-center py-6" style="color: var(--color-text-medium);">正在連線到雲端資料庫...</p>
+                </div>
+            </div>
         </div>
 
         <!-- 食譜成本計算器內容 -->
         <div id="tab-content-recipes" class="tab-content hidden">
-            <h2 class="text-2xl font-semibold mb-4 border-b pb-2 text-white" style="border-color: #3f3f46;">食譜成本計算器與售價建議</h2>
-            
-            <!-- 食譜列表 -->
-            <div id="recipe-list-container" class="scroll-container bg-transparent p-0 md:p-2 rounded-xl mb-8">
-                <div id="recipe-list" class="space-y-4">
-                    <p class="text-center py-6" style="color: var(--color-text-medium);">目前沒有食譜。請新增。</p>
-                </div>
+            <div class="flex justify-between items-center mb-4 border-b pb-2" style="border-color: #3f3f46;">
+                <h2 class="text-2xl font-semibold text-white">食譜成本計算器</h2>
+                <button id="export-recipes-btn" class="p-2 rounded-lg text-sm btn-export flex items-center">
+                     <i data-lucide="file-text" class="w-4 h-4 mr-1"></i> 匯出 CSV
+                </button>
             </div>
 
-            <!-- 新增食譜/計算器區域 -->
-            <div id="recipe-calculator" class="p-5 md:p-7 rounded-xl shadow-xl" style="background-color: #262626; border: 1px solid var(--color-text-medium);">
+            
+            <!-- 新增食譜/計算器區域 (移到最上方) -->
+            <div id="recipe-calculator" class="mb-8 p-5 md:p-7 rounded-xl shadow-xl" style="background-color: #262626; border: 1px solid var(--color-text-medium);">
                 <h3 class="text-xl font-bold mb-4 flex items-center text-white">
                     <i data-lucide="chef-hat" class="w-5 h-5 mr-2" style="color: var(--color-gold-accent);"></i>
                     編輯食譜與成本分析
@@ -278,6 +333,14 @@
                     </div>
                 </form>
             </div>
+
+            <!-- 食譜列表 (移到下方) -->
+            <h3 class="text-xl font-semibold mb-4 border-b pb-2 text-white" style="border-color: #3f3f46;">已儲存的食譜清單 (雲端同步)</h3>
+            <div id="recipe-list-container" class="scroll-container bg-transparent p-0 md:p-2 rounded-xl">
+                <div id="recipe-list" class="space-y-4">
+                    <p class="text-center py-6" style="color: var(--color-text-medium);">正在連線到雲端資料庫...</p>
+                </div>
+            </div>
         </div>
     </div>
     
@@ -288,39 +351,29 @@
         });
     </script>
 
-    <!-- 核心單機 JavaScript 邏輯 -->
+    <!-- 核心雲端 JavaScript 邏輯 -->
     <script>
-        // --- 全域變數及 localStorage Keys ---
+        // --- 核心全域變數 ---
         let materials = {}; // 儲存原物料數據 { id: materialData }
         let recipes = []; // 儲存食譜數據
         
-        const STORAGE_KEY_MATERIALS = 'rawMaterialsData';
-        const STORAGE_KEY_RECIPES = 'recipesData';
+        // --- Firebase/Firestore 相關全域變數 ---
         
+        // 🚨 修正: 優先使用 Canvas 環境提供的全域變數
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+
+        let db;
+        let auth;
+        let userId = null;
+        let isAuthReady = false;
+
         // 輔助函式：產生唯一 ID
         const generateId = () => Date.now().toString(36) + Math.random().toString(36).substring(2, 9);
 
 
-        // 從使用者 CSV 檔案中解析出的初始原物料資料
-        // 欄位: supplier(供貨商), name(材料名稱), purchasePrice(進價未稅), specification(規格), costUnit(單位), yieldPercentage(得率%), yieldCostPerUnit(得率單價)
-        const INITIAL_RAW_MATERIALS = [
-            { supplier: "", name: "中粉", purchasePrice: 45, specification: 1000, costUnit: "g", yieldPercentage: 100, yieldCostPerUnit: 0.045 },
-            { supplier: "", name: "低粉", purchasePrice: 45, specification: 1000, costUnit: "g", yieldPercentage: 100, yieldCostPerUnit: 0.045 },
-            { supplier: "", name: "糖", purchasePrice: 36, specification: 1000, costUnit: "g", yieldPercentage: 100, yieldCostPerUnit: 0.036 },
-            { supplier: "", name: "糖粉", purchasePrice: 45, specification: 600, costUnit: "g", yieldPercentage: 100, yieldCostPerUnit: 0.075 },
-            { supplier: "", name: "泡打粉", purchasePrice: 93, specification: 113, costUnit: "g", yieldPercentage: 100, yieldCostPerUnit: 0.8230 },
-            { supplier: "", name: "玉米粉", purchasePrice: 35, specification: 600, costUnit: "g", yieldPercentage: 100, yieldCostPerUnit: 0.0583 },
-            { supplier: "", name: "可可粉", purchasePrice: 210, specification: 226, costUnit: "g", yieldPercentage: 100, yieldCostPerUnit: 0.9292 },
-            { supplier: "", name: "抹茶粉", purchasePrice: 100, specification: 100, costUnit: "g", yieldPercentage: 100, yieldCostPerUnit: 1.0000 },
-            { supplier: "不知名", name: "伯爵粉", purchasePrice: 150, specification: 50, costUnit: "g", yieldPercentage: 100, yieldCostPerUnit: 3.0000 },
-            { supplier: "", name: "青花椒粉", purchasePrice: 45, specification: 26, costUnit: "g", yieldPercentage: 100, yieldCostPerUnit: 1.7308 },
-            { supplier: "", name: "杏仁粉", purchasePrice: 160, specification: 600, costUnit: "g", yieldPercentage: 100, yieldCostPerUnit: 0.2667 },
-            { supplier: "", name: "低粉(嘉禾粉)", purchasePrice: 70, specification: 1000, costUnit: "g", yieldPercentage: 100, yieldCostPerUnit: 0.0700 },
-            { supplier: "天仁", name: "天仁茗茶", purchasePrice: 104, specification: 50, costUnit: "包", yieldPercentage: 100, yieldCostPerUnit: 2.0800 },
-        ];
-
-
-        // 單位換算分組及乘數表
+        // 單位換算分組及乘數表 (與單機版相同)
         const UNIT_GROUPS = {
             'g': { // 重量基準單位：g (公克)
                 'g': 1,
@@ -336,7 +389,7 @@
             }
         };
 
-        // 輔助函式：取得單位名稱
+        // 輔助函式：取得單位名稱 (唯一的定義)
         const getUnitName = (unit) => {
             switch(unit) {
                 case 'kg': return '公斤';
@@ -344,70 +397,152 @@
                 case 'L': return '公升';
                 case 'ml': return '毫升';
                 case 'unit': return '單位';
-                case '包': return '包'; 
+                case '包': return '包';
                 default: return unit;
             }
         };
+        
+        // --- Firebase/Firestore 邏輯 ---
 
-        
-        // --- 單機資料存取函式 ---
-        
-        /**
-         * 從 localStorage 讀取資料
-         * @param {string} key - localStorage key
-         * @param {any} defaultVal - 預設值 (通常是 {} 或 [])
-         * @returns {any} 解析後的資料
-         */
-        const loadDataLocal = (key, defaultVal) => {
-            try {
-                const data = localStorage.getItem(key);
-                return data ? JSON.parse(data) : defaultVal;
-            } catch (error) {
-                console.error(`讀取 localStorage 失敗 (${key}):`, error);
-                return defaultVal;
-            }
+        // Firestore 資料路徑 (使用公共路徑實現協作)
+        const getCollectionPath = (collectionName) => {
+            // 使用公共路徑實現多用戶間的資料共享: /artifacts/{appId}/public/data/{collectionName}
+            return `artifacts/${appId}/public/data/${collectionName}`;
         };
 
-        /**
-         * 將資料儲存到 localStorage
-         * @param {string} key - localStorage key
-         * @param {any} data - 要儲存的資料
-         */
-        const saveDataLocal = (key, data) => {
-            try {
-                localStorage.setItem(key, JSON.stringify(data));
-                console.log(`資料已儲存到 localStorage: ${key}`);
-            } catch (error) {
-                console.error(`寫入 localStorage 失敗 (${key}):`, error);
-                // 可以彈出一個警告 Modal 提示使用者儲存失敗
+        // 1. 初始化 Firebase 和認證
+        const initializeFirebase = async () => {
+            if (!firebaseConfig) {
+                console.error("Firebase 配置遺失。應用程式將無法使用雲端功能。");
+                document.getElementById('collaboration-status').textContent = '連線失敗 (配置遺失)';
+                document.getElementById('collaboration-status').style.backgroundColor = 'red';
+                return;
             }
-        };
-        
-        // --- 初始資料檢查與載入 ---
-        const initializeAppData = () => {
-            // 1. 檢查並載入初始原物料數據
-            let loadedMaterials = loadDataLocal(STORAGE_KEY_MATERIALS, null);
-            
-            if (!loadedMaterials || Object.keys(loadedMaterials).length === 0) {
-                console.log("localStorage 為空，開始載入初始原物料數據...");
-                loadedMaterials = {};
-                INITIAL_RAW_MATERIALS.forEach(material => {
-                     // 產生唯一的 ID
-                    const id = generateId(); 
-                    // 確保得率單價正確計算
-                    const yieldCostPerUnit = calculateYieldCost(material.purchasePrice, material.specification, material.yieldPercentage);
-                    loadedMaterials[id] = { id, ...material, yieldCostPerUnit };
+
+            try {
+                const { initializeApp, getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, getFirestore, setLogLevel } = window.firebase;
+                
+                const app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+                setLogLevel('debug'); // 啟用 FireStore 日誌
+
+                // 設置身份驗證監聽器
+                onAuthStateChanged(auth, async (user) => {
+                    if (user) {
+                        userId = user.uid;
+                        console.log("Firebase 認證成功，User ID:", userId);
+                        isAuthReady = true;
+                        // 認證完成後，開始設定即時資料監聽
+                        setupRealtimeListeners(); 
+                        document.getElementById('collaboration-status').textContent = '已連線 (協作模式)';
+                        lucide.createIcons();
+                    } else {
+                        console.log("嘗試登入中...");
+                        
+                        // 嘗試使用 Custom Token 登入，如果沒有則匿名登入
+                        if (initialAuthToken) {
+                            console.log("使用 Custom Token 登入...");
+                            await signInWithCustomToken(auth, initialAuthToken);
+                        } else {
+                            console.log("使用匿名登入...");
+                            await signInAnonymously(auth);
+                        }
+                    }
                 });
+            } catch (error) {
+                console.error("Firebase 初始化或認證失敗:", error);
+                document.getElementById('collaboration-status').textContent = '連線錯誤 (請檢查配置)';
+                document.getElementById('collaboration-status').style.backgroundColor = 'red';
             }
-            // 儲存到全域變數並立即渲染
-            saveRawMaterialsLocal(loadedMaterials); 
-            
-            // 2. 載入食譜
-            const loadedRecipes = loadDataLocal(STORAGE_KEY_RECIPES, []);
-            saveRecipesLocal(loadedRecipes); 
         };
 
-        // --- 原物料 (Raw Materials) 邏輯 ---
+        // 2. 設置即時監聽器
+        const setupRealtimeListeners = () => {
+            if (!isAuthReady) return;
+
+            const { onSnapshot, collection } = window.firebase;
+
+            // --- Materials 監聽 ---
+            const materialsRef = collection(db, getCollectionPath('materials'));
+            onSnapshot(materialsRef, (snapshot) => {
+                const newMaterials = {};
+                snapshot.forEach(doc => {
+                    // 確保 ID 來自 document ID
+                    newMaterials[doc.id] = { id: doc.id, ...doc.data() };
+                });
+                // 更新全域變數並渲染 UI
+                materials = newMaterials;
+                console.log("原物料資料已從 Firestore 即時更新:", Object.keys(materials).length);
+                
+                let materialArray = Object.values(materials);
+                materialArray.sort((a, b) => a.name.localeCompare(b.name, 'zh-TW'));
+                renderMaterialList(materialArray);
+                updateRecipeIngredientsForm(); // 更新食譜編輯區的材料選項
+                calculateCurrentRecipeCost(); // 重新計算當前食譜成本
+            }, (error) => {
+                console.error("原物料即時監聽失敗:", error);
+            });
+
+            // --- Recipes 監聽 ---
+            const recipesRef = collection(db, getCollectionPath('recipes'));
+            onSnapshot(recipesRef, (snapshot) => {
+                const newRecipes = [];
+                snapshot.forEach(doc => {
+                    // 確保 ID 來自 document ID
+                    newRecipes.push({ id: doc.id, ...doc.data() });
+                });
+                // 更新全域變數並渲染 UI
+                recipes = newRecipes;
+                console.log("食譜資料已從 Firestore 即時更新:", recipes.length);
+                recipes.sort((a, b) => a.name.localeCompare(b.name, 'zh-TW'));
+                renderRecipeList(recipes);
+            }, (error) => {
+                console.error("食譜即時監聽失敗:", error);
+            });
+        };
+
+        // 3. Firestore 寫入操作
+        const addOrUpdateMaterialFirestore = async (materialData, id) => {
+            if (!isAuthReady) return console.error("Firebase 尚未認證完成，無法寫入。");
+            const { doc, setDoc } = window.firebase;
+            const docId = id || generateId();
+            const docRef = doc(db, getCollectionPath('materials'), docId);
+            
+            // 寫入資料，將 ID 儲存為文件 ID
+            await setDoc(docRef, materialData);
+        };
+
+        const deleteMaterialFirestore = async (id) => {
+            if (!isAuthReady) return console.error("Firebase 尚未認證完成，無法刪除。");
+            const { doc, deleteDoc } = window.firebase;
+            const docRef = doc(db, getCollectionPath('materials'), id);
+            await deleteDoc(docRef);
+        };
+
+        const addOrUpdateRecipeFirestore = async (recipeData, id) => {
+            if (!isAuthReady) return console.error("Firebase 尚未認證完成，無法寫入。");
+            const { doc, setDoc, addDoc, collection } = window.firebase;
+            
+            if (id) {
+                // 更新現有文件
+                const docRef = doc(db, getCollectionPath('recipes'), id);
+                await setDoc(docRef, recipeData);
+            } else {
+                // 新增文件
+                const recipesRef = collection(db, getCollectionPath('recipes'));
+                await addDoc(recipesRef, recipeData);
+            }
+        };
+
+        const deleteRecipeFirestore = async (id) => {
+            if (!isAuthReady) return console.error("Firebase 尚未認證完成，無法刪除。");
+            const { doc, deleteDoc } = window.firebase;
+            const docRef = doc(db, getCollectionPath('recipes'), id);
+            await deleteDoc(docRef);
+        };
+        
+        // --- 原物料 (Raw Materials) 邏輯 (使用 Firestore 寫入) ---
         
         // 計算得率單價
         const calculateYieldCost = (purchasePrice, specification, yieldPercentage) => {
@@ -419,35 +554,78 @@
         };
         
         /**
-         * 儲存原物料到 localStorage，並更新 UI
-         * @param {object} newMaterials - 包含所有 materialData 的物件
+         * 儲存原物料到 Firestore，並觸發 UI 透過 onSnapshot 更新
+         * @param {object} materialData - 單個物料資料
+         * @param {string} id - 文件 ID
          */
-        const saveRawMaterialsLocal = (newMaterials) => {
-            materials = newMaterials;
-            saveDataLocal(STORAGE_KEY_MATERIALS, materials);
+        const handleMaterialSubmit = async (e) => {
+            e.preventDefault();
+
+            const id = document.getElementById('material-id').value;
+            const name = document.getElementById('material-name').value;
+            const supplier = document.getElementById('material-supplier').value;
+            const purchasePrice = parseFloat(document.getElementById('material-price').value);
+            const specification = parseFloat(document.getElementById('material-spec').value);
+            const costUnit = document.getElementById('material-cost-unit').value;
+            const yieldPercentage = parseFloat(document.getElementById('material-yield').value);
+
+            const yieldCostPerUnit = calculateYieldCost(purchasePrice, specification, yieldPercentage);
+
+            if (!name || isNaN(purchasePrice) || purchasePrice <= 0 || isNaN(specification) || specification <= 0 || !costUnit || isNaN(yieldPercentage) || yieldPercentage <= 0) {
+                console.error("輸入資料無效，請檢查所有必填欄位。");
+                return;
+            }
+            if (yieldCostPerUnit === 0) {
+                 console.error("計算得率單價失敗，請檢查輸入的價格、規格或得率是否為 0。");
+                 return;
+            }
+
+            const materialData = { name, supplier, purchasePrice, specification, costUnit, yieldPercentage, yieldCostPerUnit };
             
-            // 轉為陣列以便排序和渲染
-            let materialArray = Object.values(materials);
-            materialArray.sort((a, b) => a.name.localeCompare(b.name, 'zh-TW'));
-            
-            renderMaterialList(materialArray);
-            updateRecipeIngredientsForm(); // 更新食譜編輯區的材料選項
-            calculateCurrentRecipeCost(); // 重新計算當前食譜成本
+            try {
+                await addOrUpdateMaterialFirestore(materialData, id);
+                resetMaterialForm();
+            } catch (error) {
+                console.error("儲存原物料到 Firestore 失敗:", error);
+            }
         };
 
-        const updateCalculatedCostDisplay = () => {
-            const price = parseFloat(document.getElementById('material-price').value);
-            const spec = parseFloat(document.getElementById('material-spec').value);
-            const yieldPerc = parseFloat(document.getElementById('material-yield').value);
-            const costUnit = document.getElementById('material-cost-unit').value;
+        const editMaterial = (id) => {
+            const material = materials[id];
+            if (!material) return;
             
-            const calculatedCost = calculateYieldCost(price, spec, yieldPerc);
+            document.getElementById('material-id').value = id;
+            document.getElementById('material-name').value = material.name;
+            document.getElementById('material-supplier').value = material.supplier || '';
+            document.getElementById('material-price').value = material.purchasePrice;
+            document.getElementById('material-spec').value = material.specification;
+            document.getElementById('material-cost-unit').value = material.costUnit;
+            document.getElementById('material-yield').value = material.yieldPercentage;
             
-            document.getElementById('calculated-yield-cost').textContent = calculatedCost.toFixed(4);
-            document.getElementById('calculated-cost-unit').textContent = getUnitName(costUnit) || '單位'; // 顯示最小單位名稱
+            updateCalculatedCostDisplay(); // 更新顯示
+            
+            document.getElementById('material-submit-btn').innerHTML = '<i data-lucide="save" class="w-5 h-5 inline-block mr-2"></i> 更新原物料';
+            document.getElementById('material-submit-btn').classList.remove('btn-primary');
+            document.getElementById('material-submit-btn').classList.add('bg-blue-600', 'hover:bg-blue-700', 'text-white');
+            lucide.createIcons();
+            
+            // 捲動到表單
+            document.getElementById('material-form').scrollIntoView({ behavior: 'smooth' });
+        };
+
+        const deleteMaterial = async (id) => {
+            if (!confirmAction("確定要刪除此原物料嗎? 此操作無法復原。")) return; 
+
+            try {
+                await deleteMaterialFirestore(id);
+                resetMaterialForm(); // 刪除成功後重設表單
+            } catch (error) {
+                console.error("刪除原物料失敗:", error);
+            }
         };
 
         const renderMaterialList = (materialArray) => {
+            // ... (此函數邏輯不變，僅使用 materials 全域變數)
             const listEl = document.getElementById('material-list');
             listEl.innerHTML = '';
             
@@ -500,78 +678,16 @@
             });
         };
 
-        const handleMaterialSubmit = (e) => {
-            e.preventDefault();
-
-            const id = document.getElementById('material-id').value;
-            const name = document.getElementById('material-name').value;
-            const supplier = document.getElementById('material-supplier').value;
-            const purchasePrice = parseFloat(document.getElementById('material-price').value);
-            const specification = parseFloat(document.getElementById('material-spec').value);
+        const updateCalculatedCostDisplay = () => {
+            const price = parseFloat(document.getElementById('material-price').value);
+            const spec = parseFloat(document.getElementById('material-spec').value);
+            const yieldPerc = parseFloat(document.getElementById('material-yield').value);
             const costUnit = document.getElementById('material-cost-unit').value;
-            const yieldPercentage = parseFloat(document.getElementById('material-yield').value);
-
-            const yieldCostPerUnit = calculateYieldCost(purchasePrice, specification, yieldPercentage);
-
-            if (!name || isNaN(purchasePrice) || purchasePrice <= 0 || isNaN(specification) || specification <= 0 || !costUnit || isNaN(yieldPercentage) || yieldPercentage <= 0) {
-                console.error("輸入資料無效，請檢查所有必填欄位。");
-                return;
-            }
-            if (yieldCostPerUnit === 0) {
-                 console.error("計算得率單價失敗，請檢查輸入的價格、規格或得率是否為 0。");
-                 return;
-            }
-
-            const materialData = { name, supplier, purchasePrice, specification, costUnit, yieldPercentage, yieldCostPerUnit };
             
-            const newMaterials = { ...materials };
-
-            if (id) {
-                newMaterials[id] = { ...materialData, id };
-                console.log("原物料更新成功:", id);
-            } else {
-                const newId = generateId();
-                newMaterials[newId] = { ...materialData, id: newId };
-                console.log("原物料新增成功");
-            }
+            const calculatedCost = calculateYieldCost(price, spec, yieldPerc);
             
-            saveRawMaterialsLocal(newMaterials);
-            resetMaterialForm();
-        };
-
-        const editMaterial = (id) => {
-            const material = materials[id];
-            if (!material) return;
-            
-            document.getElementById('material-id').value = id;
-            document.getElementById('material-name').value = material.name;
-            document.getElementById('material-supplier').value = material.supplier || '';
-            document.getElementById('material-price').value = material.purchasePrice;
-            document.getElementById('material-spec').value = material.specification;
-            document.getElementById('material-cost-unit').value = material.costUnit;
-            document.getElementById('material-yield').value = material.yieldPercentage;
-            
-            updateCalculatedCostDisplay(); // 更新顯示
-            
-            document.getElementById('material-submit-btn').innerHTML = '<i data-lucide="save" class="w-5 h-5 inline-block mr-2"></i> 更新原物料';
-            document.getElementById('material-submit-btn').classList.remove('btn-primary');
-            document.getElementById('material-submit-btn').classList.add('bg-blue-600', 'hover:bg-blue-700', 'text-white');
-            lucide.createIcons();
-            
-            // 捲動到表單
-            document.getElementById('material-form').scrollIntoView({ behavior: 'smooth' });
-        };
-
-        const deleteMaterial = (id) => {
-            if (!confirmAction("確定要刪除此原物料嗎? 此操作無法復原。")) return; 
-
-            const newMaterials = { ...materials };
-            if (newMaterials[id]) {
-                delete newMaterials[id];
-                console.log("原物料刪除成功:", id);
-                saveRawMaterialsLocal(newMaterials);
-                resetMaterialForm();
-            }
+            document.getElementById('calculated-yield-cost').textContent = calculatedCost.toFixed(4);
+            document.getElementById('calculated-cost-unit').textContent = getUnitName(costUnit) || '單位'; // 顯示最小單位名稱
         };
 
         const resetMaterialForm = () => {
@@ -584,26 +700,14 @@
             document.getElementById('material-submit-btn').classList.add('btn-primary');
             lucide.createIcons();
         };
-
-        // --- 食譜 (Recipes) 邏輯 ---
         
-        /**
-         * 儲存食譜到 localStorage，並更新 UI
-         * @param {array} newRecipes - 包含所有食譜物件的陣列
-         */
-        const saveRecipesLocal = (newRecipes) => {
-            recipes = newRecipes;
-            saveDataLocal(STORAGE_KEY_RECIPES, recipes);
-            
-            // 按名稱排序
-            recipes.sort((a, b) => a.name.localeCompare(b.name, 'zh-TW'));
-            renderRecipeList(recipes);
-        };
+        // --- 食譜 (Recipes) 邏輯 (使用 Firestore 寫入) ---
         
         // 計算建議售價
         const calculateSellingPrice = (totalCost, targetMarginPercentage) => {
+            // 確保目標毛利率為有效數字，且在 [0, 100) 區間
             if (isNaN(totalCost) || totalCost < 0 || isNaN(targetMarginPercentage) || targetMarginPercentage >= 100 || targetMarginPercentage < 0) {
-                 if (targetMarginPercentage >= 100) return 0;
+                 if (targetMarginPercentage >= 100) return 0; // 100% 毛利時無法計算
                 return 0;
             }
             const marginRate = targetMarginPercentage / 100;
@@ -636,17 +740,18 @@
             if (costUnitGroupName && recipeUnitGroupName && costUnitGroupName === recipeUnitGroupName) {
                 const group = UNIT_GROUPS[costUnitGroupName];
                 
-                // recipeUnit 轉換為 costUnit 的乘數 = (recipeUnit to base multiplier) / (costUnit to base multiplier)
+                // 單位換算因子 (將 recipeQuantity 換算成 costUnit 數量)
+                // factor = (recipeUnit 對基準單位的乘數) / (costUnit 對基準單位的乘數)
                 multiplier = group[recipeUnit] / group[costUnit];
                 
             } else if (costUnit === recipeUnit) {
                 multiplier = 1; // 單位相同，乘數為 1
             } else {
                  // 單位不一致且沒有明確的換算或不同組
-                 console.warn(`無法轉換單位: 從 ${recipeUnit} 到 ${costUnit} (物料: ${material.name})`);
                 return 0;
             }
 
+            // 總成本 = 數量 * 換算因子 * 得率單價
             return quantity * multiplier * yieldCostPerUnit;
         };
 
@@ -680,6 +785,7 @@
             
             // 確保毛利率在 [0, 100] 之間
             targetMargin = Math.max(0, Math.min(100, targetMargin));
+            // 更新輸入框的值，確保它是整數
             targetMarginInput.value = targetMargin;
 
             const sellingPrice = calculateSellingPrice(totalCost, targetMargin);
@@ -757,12 +863,14 @@
             });
         };
         
-        const handleRecipeSubmit = (e) => {
+        const handleRecipeSubmit = async (e) => {
             e.preventDefault();
+            if (!isAuthReady) return; // 確保認證完成
 
             const id = document.getElementById('recipe-doc-id').value;
             const name = document.getElementById('recipe-name').value.trim();
             
+            // 獲取並確保目標毛利率為整數 [0, 100]
             let targetMargin = parseInt(document.getElementById('recipe-target-margin').value, 10) || 0;
             targetMargin = Math.max(0, Math.min(100, targetMargin));
 
@@ -779,6 +887,7 @@
                 const quantity = parseFloat(group.querySelector('.ingredient-quantity').value);
                 const recipeUnit = group.querySelector('.ingredient-unit').value;
                 
+                // 檢查是否有有效的數量和單位，即使成本為 0 也允許儲存
                 if (materialId && !isNaN(quantity) && quantity > 0 && recipeUnit) {
                     ingredients.push({ materialId, quantity, recipeUnit });
                 }
@@ -789,25 +898,15 @@
                 return;
             }
 
-            const recipeData = { name, ingredients, targetMargin };
-            let newRecipes = [...recipes];
+            const recipeData = { name, ingredients, targetMargin }; // 新增 targetMargin
 
-            if (id) {
-                // 更新現有食譜
-                const index = newRecipes.findIndex(r => r.id === id);
-                if (index > -1) {
-                    newRecipes[index] = { ...recipeData, id };
-                    console.log("食譜更新成功:", id);
-                }
-            } else {
-                // 新增食譜
-                const newId = generateId();
-                newRecipes.push({ ...recipeData, id: newId });
-                console.log("食譜新增成功");
+            try {
+                await addOrUpdateRecipeFirestore(recipeData, id);
+                console.log("食譜儲存成功:", id || '新文件');
+                resetRecipeForm();
+            } catch (error) {
+                console.error("儲存食譜失敗:", error);
             }
-            
-            saveRecipesLocal(newRecipes);
-            resetRecipeForm();
         };
 
         const editRecipe = (id) => {
@@ -816,8 +915,7 @@
 
             document.getElementById('recipe-doc-id').value = id;
             document.getElementById('recipe-name').value = recipe.name;
-            document.getElementById('recipe-target-margin').value = Math.round(recipe.targetMargin || 50); 
-            
+            document.getElementById('recipe-target-margin').value = recipe.targetMargin || 50; // 載入目標毛利率
             document.getElementById('recipe-submit-btn').innerHTML = '<i data-lucide="save" class="w-5 h-5 inline-block mr-1"></i> 更新食譜';
             document.getElementById('recipe-submit-btn').classList.remove('btn-primary');
             document.getElementById('recipe-submit-btn').classList.add('bg-blue-600', 'hover:bg-blue-700', 'text-white');
@@ -834,29 +932,33 @@
             document.getElementById('recipe-calculator').scrollIntoView({ behavior: 'smooth' });
         };
 
-        const deleteRecipe = (id) => {
-            if (!confirmAction("確定要刪除此食譜嗎? 此操作無法復原。")) return;
+        const deleteRecipe = async (id) => {
+            if (!confirmAction("確定要刪除此食譜嗎?")) return;
 
-            const newRecipes = recipes.filter(r => r.id !== id);
-            saveRecipesLocal(newRecipes);
-            resetRecipeForm();
+            try {
+                await deleteRecipeFirestore(id);
+                console.log("食譜刪除成功:", id);
+                resetRecipeForm();
+            } catch (error) {
+                console.error("刪除食譜失敗:", error);
+            }
         };
 
         const resetRecipeForm = () => {
             document.getElementById('recipe-form').reset();
             document.getElementById('recipe-doc-id').value = '';
-            document.getElementById('recipe-target-margin').value = 50; // 重設目標毛利率
-            document.getElementById('calculated-selling-price').textContent = '0.00'; // 重設售價
-            
             document.getElementById('recipe-submit-btn').innerHTML = '<i data-lucide="save" class="w-5 h-5 inline-block mr-1"></i> 儲存食譜';
             document.getElementById('recipe-submit-btn').classList.remove('bg-blue-600', 'hover:bg-blue-700', 'text-white');
             document.getElementById('recipe-submit-btn').classList.add('btn-primary');
             lucide.createIcons();
 
+            // 重設成本顯示
             document.getElementById('calculated-cost').textContent = '0.00';
-
+            document.getElementById('calculated-selling-price').textContent = '0.00';
+            
             // 重設食材輸入欄位
-            document.getElementById('ingredient-input-container').innerHTML = '<p class="text-sm italic text-center py-2" style="color: var(--color-text-medium);">請在下方新增食材。</p>';
+            const container = document.getElementById('ingredient-input-container');
+            container.innerHTML = '<p class="text-sm italic text-center py-2" style="color: var(--color-text-medium);">請在下方新增食材。</p>';
         };
 
 
@@ -873,7 +975,7 @@
                 </option>
             `).join('');
 
-            // 根據材料的 costUnit，提供可選的 recipe unit
+            // 輔助函式：根據材料 ID 產生單位選項
             const getUnitOptions = (selectedMaterialId, currentUnit) => {
                 const material = materials[selectedMaterialId];
                 if (!material) {
@@ -881,17 +983,29 @@
                 }
                 const costUnit = material.costUnit;
                 
-                // 找出 costUnit 所在的分組名稱
-                const groupName = Object.keys(UNIT_GROUPS).find(name => UNIT_GROUPS[name].hasOwnProperty(costUnit));
+                // 找出 costUnit 所在的分組 (例如 'g' 屬於 UNIT_GROUPS['g'])
+                const groupName = Object.keys(UNIT_GROUPS).find(base => 
+                    Object.keys(UNIT_GROUPS[base]).includes(costUnit)
+                );
+
+                let units = [costUnit]; // Default to only the cost unit
+                if (groupName) {
+                    units = Object.keys(UNIT_GROUPS[groupName]); // Use all units in that group
+                }
+
+                // 如果沒有設定當前單位，則預設選中最小的計算單位
+                if (!currentUnit && material) {
+                    currentUnit = costUnit;
+                }
                 
-                // 如果找到分組，則提供該分組的所有單位，否則只提供成本單位
-                const units = groupName ? Object.keys(UNIT_GROUPS[groupName]) : [costUnit];
-                
-                // 處理單位選項的深色背景
-                return units.map(u => {
-                    const isSelected = currentUnit === u || (!currentUnit && u === costUnit); // 預設選擇成本單位
-                    return `<option value="${u}" ${isSelected ? 'selected' : ''} class="bg-gray-700 text-white">${getUnitName(u)} (${u})</option>`;
-                }).join('');
+                // 確保當前單位是有效的，如果無效則預設為 costUnit
+                if (!units.includes(currentUnit) && material) {
+                     currentUnit = costUnit;
+                }
+
+                return units.map(u => `
+                    <option value="${u}" ${currentUnit === u ? 'selected' : ''} class="bg-gray-700 text-white">${getUnitName(u)} (${u})</option>
+                `).join('');
             };
 
             const inputGroup = document.createElement('div');
@@ -901,10 +1015,7 @@
             inputGroup.style.border = '1px solid #52525B';
 
             // 預先生成單位選項
-            let initialUnitOptions = '<option value="" disabled selected class="bg-gray-700 text-white">選擇單位</option>';
-            if (initialData.materialId) {
-                initialUnitOptions = getUnitOptions(initialData.materialId, initialData.recipeUnit);
-            }
+            let initialUnitOptions = getUnitOptions(initialData.materialId, initialData.recipeUnit);
 
             inputGroup.innerHTML = `
                 <!-- 材料選擇 (手機佔 6 欄) -->
@@ -980,7 +1091,6 @@
             calculateCurrentRecipeCost();
         };
 
-        // --- 輔助功能與事件監聽 ---
 
         const switchTab = (tabName) => {
             document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
@@ -991,42 +1101,16 @@
         };
 
         const confirmAction = (message) => {
-            // 在實際單機環境中，這裡應該是 window.confirm(message)
-            // 在這個虛擬環境中，我們假設使用者總是確認，並在 console 輸出警告
+            // 由於不能使用 window.confirm，這裡只輸出訊息到 console
             console.warn("確認操作 (請在您的應用程式中設計 Modal): " + message);
+            // 由於是虛擬環境，我們假設確認通過
             return true; 
         };
 
 
         document.addEventListener('DOMContentLoaded', () => {
-            // 載入初始資料 (從 localStorage 或預設值)
-            initializeAppData();
-
-            // PWA: 動態注入 Manifest (保持不動，以便可以在手機上安裝為 App)
-            const injectManifest = () => {
-                const manifest = {
-                    name: "食譜成本計算與管理系統",
-                    short_name: "成本分析",
-                    start_url: ".",
-                    display: "standalone", 
-                    background_color: "#171717",
-                    theme_color: "#D4AF37"
-                };
-                try {
-                    const manifestBlob = new Blob([JSON.stringify(manifest)], { type: 'application/json' });
-                    const manifestURL = URL.createObjectURL(manifestBlob);
-        
-                    const link = document.createElement('link');
-                    link.rel = 'manifest';
-                    link.href = manifestURL;
-                    document.head.appendChild(link);
-                    console.log("PWA Manifest 已動態注入.");
-                } catch (e) {
-                    console.error("無法注入 PWA Manifest:", e);
-                }
-            };
-            injectManifest();
-
+            initializeFirebase();
+            // PWA: 注入 Manifest 相關邏輯應在生產環境中處理。
 
             // 分頁切換監聽
             document.getElementById('tab-materials').addEventListener('click', () => switchTab('materials'));
